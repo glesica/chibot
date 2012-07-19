@@ -20,64 +20,60 @@ class ChiBot(irc.bot.SingleServerIRCBot):
         conn.join(self.channel)
 
     def on_privmsg(self, conn, event):
-        self.process_message(conn, event, public=False)
+        self._process_message(conn, event, public=False)
 
     def on_pubmsg(self, conn, event):
-        self.process_message(conn, event, public=True)
-        return
-        a = e.arguments()[0].split(":", 1)
-        if len(a) > 1 and irc_lower(a[0]) == irc_lower(self.connection.get_nickname()):
-            self.process_message(e, a[1].strip(), public=Truevent)
+        self._process_message(conn, event, public=True)
 
     # Custom methods
 
-    def _iscmd(self, conn, msg, public):
-        if not public:
-            return True
+    def _iscmd(self, msg):
+        # Anything that starts with a ! will be a command 
+        # for now.
+        #TODO: Account for "<nick>:" at the front
+        return msg.strip()[0] == '!'
 
-        return msg.startswith(conn.get_nickname() + ':')
+    def _parse_command(self, msg):
+        tokens = msg.split()
+        cmd = tokens[0].lstrip('!')
+        args = tokens[1:]
+        return cmd, args
 
-    def _process_cmd(self, cmd, args):
-        print plugins.registered_plugins #DEBUG
-        
-        if cmd not in plugins.registered_plugins:
-            return plugins.NoticeResponse('Unknown command: %s' % cmd)
-            
-        func = plugins.registered_plugins[cmd]
+    def _process_cmd(self, conn, event, public, msg):
+        cmd, args = self._parse_command(msg)
+
         try:
-            return func(cmd, *args)
+            func = plugins.registered_plugins[cmd]
+            resp = func(cmd, *args)
+        except KeyError, e:
+            resp = plugins.NoticeResponse('Invalid command, use "help"...')
         except Exception, e:
-            print e #DEBUG
-            return plugins.NoticeResponse('There were some problems, command failed horribly.')
+            resp = plugins.NoticeResponse('Something went horribly wrong...')
 
-    def process_message(self, conn, event, public=False):
+        return resp
+
+    def _send_response(self, conn, resp, target):
+        for line in resp:
+            if resp.response_type == plugins.NORMAL_RESPONSE:
+                conn.privmsg(target, line)
+            if resp.response_type == plugins.NOTICE_RESPONSE:
+                conn.notice(target, line)
+
+    def _process_message(self, conn, event, public):
         nick = event.source().nick
         user = event.source().user[0]
         host = event.source().host
         msg = event.arguments()[0]
 
-        if self._iscmd(conn, msg, public):
-            # parse command and run
-            if public:
-                cs = msg.split(':', 1)[1]
-            else:
-                cs = msg
-
-            cmd = cs.split()[0]
-            args = cs.split()[1:]
-            resp = self._process_cmd(cmd, args)
+        if self._iscmd(msg):
+            resp = self._process_cmd(conn, event, public, msg)
 
             if public:
                 target = self.channel
             else:
                 target = nick
 
-            for line in resp:
-                if resp.response_type == plugins.NORMAL_RESPONSE:
-                    conn.privmsg(target, line)
-                if resp.response_type == plugins.NOTICE_RESPONSE:
-                    conn.notice(target, line)
-
+            self._send_response(conn, resp, target)
 
         if public:
             # Create a log entry
