@@ -31,7 +31,10 @@ class ChiBot(irc.bot.SingleServerIRCBot):
         # Anything that starts with a ! will be a command 
         # for now.
         #TODO: Account for "<nick>:" at the front
-        return msg.strip()[0] == '!'
+        stripped_msg = msg.strip()
+        if stripped_msg:
+            return stripped_msg[0] == '!'
+        return False
 
     def _parse_command(self, msg):
         tokens = msg.split()
