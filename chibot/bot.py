@@ -1,7 +1,7 @@
 """
 An IRC bot for the Chicago GLUG channel.
 """
-import datetime
+import sys, datetime
 import irc.bot
 from irc.client import irc_lower, ip_numstr_to_quad, ip_quad_to_numstr
 from . import plugins
@@ -42,7 +42,7 @@ class ChiBot(irc.bot.SingleServerIRCBot):
         args = tokens[1:]
         return cmd, args
 
-    def _process_cmd(self, conn, event, public, msg):
+    def _process_cmd(self, msg, public):
         cmd, args = self._parse_command(msg)
 
         try:
@@ -51,6 +51,7 @@ class ChiBot(irc.bot.SingleServerIRCBot):
         except KeyError, e:
             resp = plugins.NoticeResponse('Invalid command, use "help"...')
         except Exception, e:
+            sys.stderr.write('%s\n' % e)
             resp = plugins.NoticeResponse('Something went horribly wrong...')
 
         return resp
@@ -62,14 +63,18 @@ class ChiBot(irc.bot.SingleServerIRCBot):
             if resp.response_type == plugins.NOTICE_RESPONSE:
                 conn.notice(target, line)
 
+    def _process_filters(self, event):
+        msg = event.arguments()[0]
+        for name, matcher, filter in plugins.registered_filters:
+            if matcher(msg):
+                filter(event)
+
     def _process_message(self, conn, event, public):
         nick = event.source().nick
-        user = event.source().user[0]
-        host = event.source().host
         msg = event.arguments()[0]
 
         if self._iscmd(msg):
-            resp = self._process_cmd(conn, event, public, msg)
+            resp = self._process_cmd(msg, public)
 
             if public:
                 target = self.channel
@@ -80,7 +85,7 @@ class ChiBot(irc.bot.SingleServerIRCBot):
 
         if public:
             # Create a log entry
-            plugins.logs.create_entry(nick, user, host, msg)
+            plugins.logs.create_entry(event)
 
 
 

@@ -6,13 +6,13 @@ parser = argparse.ArgumentParser(
     description='Run Chibot.'
 )
 parser.add_argument(
-    '--commands',
-    dest='commands',
-    metavar='C',
+    '--plugins',
+    dest='plugins',
+    metavar='P',
     type=str,
     nargs='*',
     default=(),
-    help='User-defined commands to import.'
+    help='User-defined plugins to import. Given as Python modules.'
 )
 parser.add_argument(
     '--server',
@@ -43,17 +43,14 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-# Load plugins
-found_plugins = {}
-
-# Built-in
-found_plugins.update(chibot.plugins.registered_plugins)
-
-# Defined in CWD
-pass
-
-# Passed on command line
-pass
+# Import plugins specified on the command line
+for plugin in args.plugins:
+    if '.' in plugin:
+        pkg, mod = plugin.rsplit('.', 1)
+    else:
+        pkg = plugin
+        mod = ''
+    __import__(pkg, fromlist=[mod])
 
 # Connect and start listening
 bot = chibot.bot.ChiBot(
@@ -61,7 +58,7 @@ bot = chibot.bot.ChiBot(
     nickname=args.nickname, 
     server=args.server, 
     port=args.port, 
-    plugins=found_plugins,
+    plugins=chibot.plugins.registered_plugins,
 )
 bot.start()
 

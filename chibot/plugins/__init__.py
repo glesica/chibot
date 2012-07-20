@@ -10,6 +10,7 @@ __all__ = [
 
 
 registered_plugins = {}
+registered_filters = []
 
 
 NO_RESPONSE = 0
@@ -94,6 +95,31 @@ def register(name=None, response_type=NORMAL_RESPONSE):
         registered_plugins[plugin_name] = wrapper
 
         return wrapper
+
+    return decorator
+
+
+def register_filter(matcher, name=None):
+    """
+    Registers a filter.
+
+    A filter is a function that is given the opportunity to 
+    run on each public message received by the bot. Each filter's 
+    matcher is run against the message and if True is returned, 
+    filter is allowed to run.
+
+    :param matcher: a function that accepts a message and returns a bool
+    :param name: a name to associate with the filter
+    """
+    def decorator(f):
+        if name is None:
+            filter_name = f.func_name
+        else:
+            filter_name = name
+
+        registered_filters.append((filter_name, matcher, f))
+
+        return f
 
     return decorator
 

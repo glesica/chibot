@@ -21,7 +21,9 @@ def help(cmd, *args, **kwargs):
         for name, func in plugins.registered_plugins.items():
             if name in args:
                 if func.__doc__:
-                    resp.append('%s: %s' % (name, func.__doc__.replace('\n', '')[:MAX_CHARACTERS]))
+                    doclines = [i.strip() for i in func.__doc__.split('\n')]
+                    docstring = ' '.join(doclines)
+                    resp.append('%s: %s' % (name, docstring))
                 else:
                     resp.append('%s: %s' % (name, 'No help available'))
 
