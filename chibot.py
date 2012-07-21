@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-import sys, argparse
+import sys
+import argparse
 import chibot
 
 parser = argparse.ArgumentParser(
@@ -54,12 +55,10 @@ for plugin in args.plugins:
 
 # Connect and start listening
 bot = chibot.bot.ChiBot(
-    channel=args.channel, 
-    nickname=args.nickname, 
-    server=args.server, 
-    port=args.port, 
+    channel=args.channel,
+    nickname=args.nickname,
+    server=args.server,
+    port=args.port,
     plugins=chibot.plugins.registered_plugins,
 )
 bot.start()
-
-
