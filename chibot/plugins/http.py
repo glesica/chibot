@@ -7,28 +7,27 @@ from chibot import plugins
 
 
 MAX_URLS = 10
-COLUMN_WIDTH = 20
 
 
-@plugins.register(response_type=plugins.NOTICE_RESPONSE)
-def status_code(cmd, *args, **kwargs):
-    """
-    Usage: status_code <urls...>. Attempts a GET request to the given URL and returns the HTTP status code received.
-    """
-    resp = []
+class HTTPStatusPlugin(plugins.Plugin):
+    _name = 'httpstatus'
+    _arguments = (
+        ('urls', ('tok',), None),
+    )
+    _response_class = plugins.NoticeResponse
 
-    if not args:
-        return 'Sorry, you need to provide at least one URL.'
+    def run(self, urls, **kwargs):
+        if not urls:
+            return 'Provide one or more URLS'
 
-    if len(args) > MAX_URLS:
-        resp.append('Too many URLs given. Skipping some.')
+        resp = []
+        if len(urls) > MAX_URLS:
+            resp.append('Processing first %s URLS' % MAX_URLS)
 
-    for url in args[:MAX_URLS]:
-        code = requests.get(url).status_code
-        resp.append('%s | %s' % (url[:COLUMN_WIDTH], code))
-        
-    return resp
+        for u in urls[:MAX_URLS]:
+            code = requests.get(u).status_code
+            resp.append('%s ... %s' % (u, code))
 
+        return resp
 
-
-
+plugins.register(HTTPStatusPlugin())

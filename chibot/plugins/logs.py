@@ -29,61 +29,48 @@ class LogEntry(mongokit.Document):
     ]
 
 
-def create_entry(event):
-    nick = event.source().nick
-    user = event.source().user[0]
-    host = event.source().host
-    msg = event.arguments()[0]
+class LogEntryPlugin(plugins.Plugin):
+    _name = None
 
-    entry = connection.chibot.log.LogEntry()
-    entry['nickname'] = nick
-    entry['username'] = user
-    entry['host'] = host
-    entry['message'] = msg
-    entry['timestamp'] = datetime.datetime.now()
-    entry.save()
+    def _message_filter(self, message):
+        return message.public
 
+    def run(self, message):
+        entry = connection.chibot.log.LogEntry()
+        entry['nickname'] = message.nickname
+        entry['username'] = message.user
+        entry['host'] = message.host
+        entry['message'] = message.content
+        entry['timestamp'] = datetime.datetime.now()
+        entry.save()
+        return None
 
-def log_stats(cmd, *args, **kwargs):
-    """
-    Usage: logs.search <terms>. Searches the chat log for the given terms.
-    """
-    pass
+plugins.register(LogEntryPlugin())
 
 
-@plugins.register(response_type=plugins.NOTICE_RESPONSE)
-def nick_stats(cmd, *args, **kwargs):
-    """
-    Usage: nick_stats <nick>. Displays some nifty stats about a given nickname.
-    """
-    resp = []
-
-    if not args:
-        return 'Need a nickname to search for.'
-
-    if len(args) > 1:
-        resp.append('Too many nicknames, skipping all but the first.')
-
-    nickname = args[0]
-    resp.append('Nickname: %s' % nickname)
-
-    # Hit the DB
-    cursor = connection.chibot.log.LogEntry.find(
-        {
-            'nickname': nickname,
-        }
+class NickStatsPlugin(plugins.Plugin):
+    _name = 'nickstats'
+    _arguments = (
+        ('nick', 'tok', None),
     )
+    _response_class = plugins.NoticeResponse
 
-    # Compile some stats
-    if cursor.count() > 0:
-        resp.append('Number of messages: %s' % cursor.count())
-        resp.append('Time of last message: %s' % cursor.sort('timestamp')[0]['timestamp'])
-        resp.append('Last message: %s' % cursor.sort('timestamp')[0]['message'])
-    else:
-        resp.append('No such user found.')
+    def run(self, nick, **kwargs):
+        resp = []
 
-    return resp
+        resp.append('Nickname: %s' % nick)
 
+        # Hit the DB
+        cursor = connection.chibot.log.LogEntry.find({'nickname': nick})
 
+        # Compile some stats
+        if cursor.count() > 0:
+            resp.append('Number of messages: %s' % cursor.count())
+            resp.append('Time of last message: %s' % cursor.sort('timestamp', -1)[0]['timestamp'])
+            resp.append('Last message: %s' % cursor.sort('timestamp', -1)[0]['message'])
+        else:
+            resp.append('No such user found.')
 
+        return resp
 
+plugins.register(NickStatsPlugin())

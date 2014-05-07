@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys
+import threading
 import argparse
 import chibot
 
@@ -59,6 +60,21 @@ bot = chibot.bot.ChiBot(
     nickname=args.nickname,
     server=args.server,
     port=args.port,
-    plugins=chibot.plugins.registered_plugins,
 )
-bot.start()
+
+# Response handling thread
+rt = threading.Thread(
+    target=bot.process_responses,
+    args=(bot.response_queue, bot.connection, bot.request_stop)
+)
+rt.start()
+
+
+try:
+    # Run the bot
+    bot.start()
+except:
+    bot.request_stop.set()
+
+
+

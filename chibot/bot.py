@@ -1,17 +1,26 @@
 """
 An IRC bot for the Chicago GLUG channel.
 """
-import sys, datetime
+import sys
+import datetime
+import threading
+import Queue as queue
 import irc.bot
-from irc.client import irc_lower, ip_numstr_to_quad, ip_quad_to_numstr
+from . import messages
 from . import plugins
 
 
 class ChiBot(irc.bot.SingleServerIRCBot):
-    def __init__(self, plugins, channel, nickname, server, port=6667):
-        irc.bot.SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
+    def __init__(self, nickname, channel, server, port=6667):
+        irc.bot.SingleServerIRCBot.__init__(
+            self,
+            [(server, port)],
+            nickname,
+            nickname
+        )
         self.channel = channel
-        self.plugins = plugins
+        self.response_queue = queue.Queue()
+        self.request_stop = threading.Event()
 
     def on_nicknameinuse(self, conn, event):
         conn.nick(conn.get_nickname() + "_")
@@ -20,72 +29,61 @@ class ChiBot(irc.bot.SingleServerIRCBot):
         conn.join(self.channel)
 
     def on_privmsg(self, conn, event):
-        self._process_message(conn, event, public=False)
+        msg = messages.Message(event, public=False)
+        self.process_message(msg)
 
     def on_pubmsg(self, conn, event):
-        self._process_message(conn, event, public=True)
+        msg = messages.Message(event, public=True)
+        self.process_message(msg)
 
     # Custom methods
 
-    def _iscmd(self, msg):
-        # Anything that starts with a ! will be a command 
-        # for now.
-        #TODO: Account for "<nick>:" at the front
-        stripped_msg = msg.strip()
-        if stripped_msg:
-            return stripped_msg[0] == '!'
-        return False
+    def process_message(self, message):
+        """
+        Processes an incoming message by spawning a thread 
+        for each available plugin.
+        """
+        for plugin in plugins.registered_plugins:
+            args = (
+                plugin, 
+                message, 
+                self.response_queue,
+            )
+            t = threading.Thread(
+                target=self.run_plugin,
+                args=args
+            )
+            t.start()
 
-    def _parse_command(self, msg):
-        tokens = msg.split()
-        cmd = tokens[0].lstrip('!')
-        args = tokens[1:]
-        return cmd, args
-
-    def _process_cmd(self, msg, public):
-        cmd, args = self._parse_command(msg)
-
+    @staticmethod
+    def run_plugin(plugin, message, response_queue):
+        """
+        Runs the given plugin and places the result into the 
+        queue provided.
+        """
         try:
-            func = plugins.registered_plugins[cmd]
-            resp = func(cmd, *args)
-        except KeyError, e:
-            resp = plugins.NoticeResponse('Invalid command, use "help"...')
+            resp = plugin(message)
         except Exception, e:
-            sys.stderr.write('%s\n' % e)
-            resp = plugins.NoticeResponse('Something went horribly wrong...')
+            #TODO: Log the error with some info about it
+            resp = plugins.Response('Plugin error') # This is silent
+        finally:
+            if resp:
+                response_queue.put(resp)
 
-        return resp
-
-    def _send_response(self, conn, resp, target):
-        for line in resp:
-            if resp.response_type == plugins.NORMAL_RESPONSE:
-                conn.privmsg(target, line)
-            if resp.response_type == plugins.NOTICE_RESPONSE:
-                conn.notice(target, line)
-
-    def _process_filters(self, event):
-        msg = event.arguments()[0]
-        for name, matcher, filter in plugins.registered_filters:
-            if matcher(msg):
-                filter(event)
-
-    def _process_message(self, conn, event, public):
-        nick = event.source().nick
-        msg = event.arguments()[0]
-
-        if self._iscmd(msg):
-            resp = self._process_cmd(msg, public)
-
-            if public:
-                target = self.channel
-            else:
-                target = nick
-
-            self._send_response(conn, resp, target)
-
-        if public:
-            # Create a log entry
-            plugins.logs.create_entry(event)
-
-
-
+    @staticmethod
+    def process_responses(response_queue, connection, stop_event):
+        """
+        Consumes responses from the given queue and sends them 
+        to the IRC connection given.
+        """
+        while not stop_event.is_set():
+            try:
+                resp = response_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+            for line in resp:
+                if resp.response_type == plugins.NORMAL_RESPONSE:
+                    connection.privmsg(resp.target, line)
+                if resp.response_type == plugins.NOTICE_RESPONSE:
+                    connection.notice(resp.target, line)
+            response_queue.task_done()
